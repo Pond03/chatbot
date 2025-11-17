@@ -129,6 +129,9 @@ body{
   margin:10px 12px;
   max-width:72%;
   box-shadow:none;           /* เอาเงาออก */
+
+  /* <<<<<< สำคัญที่สุด: ให้เคารพ \n ในข้อความ >>>>>> */
+  white-space: pre-line;
 }
 
 .chat-me{

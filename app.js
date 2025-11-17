@@ -3,7 +3,6 @@ const root = document.documentElement;
 const toggle = document.getElementById('themeToggle');
 const label = document.getElementById('themeLabel');
 
-// ดึงธีมเดิม หรือใช้ค่าเริ่มต้นจากระบบ
 const saved =
   localStorage.getItem('theme') ||
   (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -33,7 +32,7 @@ let history = [];
 function appendBubble(text, who = 'me', extraClass = '') {
   const div = document.createElement('div');
   div.className = `chat-msg ${who === 'me' ? 'chat-me' : 'chat-ai'} ${extraClass}`;
-  div.textContent = text;
+  div.textContent = text;   // ใช้ร่วมกับ white-space: pre-line ใน CSS
   chatBox.appendChild(div);
   chatBox.scrollTop = chatBox.scrollHeight;
   return div;
@@ -55,9 +54,12 @@ function stopWaiting() {
   if (waitEl && waitEl.parentNode) waitEl.parentNode.removeChild(waitEl);
   waitEl = null;
 }
+
 function trimHistory(maxTurns = 10) {
   const maxMsgs = maxTurns * 2;
-  if (history.length > maxMsgs) history = history.slice(history.length - maxMsgs);
+  if (history.length > maxMsgs) {
+    history = history.slice(history.length - maxMsgs);
+  }
 }
 
 newChatBtn?.addEventListener('click', () => {
@@ -73,7 +75,7 @@ composer.addEventListener('submit', async (e) => {
   const t = promptEl.value.trim();
   if (!t) return;
 
-  if (heroEl) heroEl.classList.add('hide'); // ซ่อน "สวัสดี Wanwarin"
+  if (heroEl) heroEl.classList.add('hide');
 
   appendBubble(t, 'me');
   history.push({ role: 'user', content: t });
@@ -81,14 +83,30 @@ composer.addEventListener('submit', async (e) => {
   promptEl.value = '';
 
   startWaiting();
+
   try {
-    // ✅ เลือก endpoint อัตโนมัติ
     const lower = t.toLowerCase();
-    const useRag =
-      lower.includes('transdev') ||
-      lower.includes('ai workspace') ||
-      lower.includes('rag') ||
-      lower.includes('smart city');
+
+    // 🔍 เลือกใช้ RAG สำหรับ
+    // - มี PRJ-xxx
+    // - มีคำว่า โครงการ / รหัสโครงการ / project
+    // - หรือมี pattern "ไฟล์ที่ 1", "โครงการที่ 3" ฯลฯ
+    const useRag = (() => {
+      const hasPrjPattern = /prj\s*-?\s*(\d{3})/i.test(lower);
+      const hasProjectIndex = /(ไฟล์ที่|โครงการที่)\s*\d{1,3}/.test(lower);
+      const hasProjectKeywords =
+        lower.includes('prj') ||
+        lower.includes('โครงการ') ||
+        lower.includes('รหัสโครงการ') ||
+        lower.includes('project');
+      const hasCompanyKeywords =
+        lower.includes('transdev') ||
+        lower.includes('ทรานส์โค้ด') ||
+        lower.includes('ai workspace') ||
+        lower.includes('smart city');
+
+      return hasPrjPattern || hasProjectIndex || hasProjectKeywords || hasCompanyKeywords;
+    })();
 
     const endpoint = useRag ? '/api/rag-chat' : '/api/chat';
 

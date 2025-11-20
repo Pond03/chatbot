@@ -144,7 +144,6 @@ function tryFAQAnswer(question) {
 
   const qNorm = normalizeSimple(question);
 
-  // ตรงตัวก่อน
   for (const it of FAQ_CACHE) {
     if (
       qNorm === it.qNorm ||
@@ -154,7 +153,6 @@ function tryFAQAnswer(question) {
       return it.aRaw;
   }
 
-  // คล้ายกัน
   let best = null,
     bestScore = 0;
   for (const it of FAQ_CACHE) {
@@ -170,28 +168,21 @@ function tryFAQAnswer(question) {
 }
 
 // ======================================================
-//   PROJECT KB (deterministic) + index-based access
+//   PROJECT KB (deterministic) + fuzzy access
 // ======================================================
-let PROJECTS_CACHE = null; // map: code -> proj
-let PROJECT_LIST = [];     // array ตามลำดับไฟล์: index 0 = ไฟล์ที่ 1
+let PROJECTS_CACHE = null;
+let PROJECT_LIST = [];
 
 function loadProjects() {
   const map = {};
-  const list = {};
+  const arr = [];
 
-  console.log("📂 PROJECT_DIR =", PROJECT_DIR, "exists?", fs.existsSync(PROJECT_DIR));
   if (!fs.existsSync(PROJECT_DIR)) return { map: {}, list: [] };
 
   let fileNames = fs
-    .readdirSync(PROJECT_DIR, { withFileTypes: true })
-    .filter((d) => d.isFile() && d.name.toLowerCase().endsWith(".txt"))
-    .map((d) => d.name);
-
-  // เรียงตามชื่อไฟล์: PRJ-001.txt, PRJ-002.txt, ...
-  fileNames = fileNames.sort();
-  console.log("📄 Project files =", fileNames);
-
-  const arr = [];
+    .readdirSync(PROJECT_DIR)
+    .filter((f) => f.toLowerCase().endsWith(".txt"))
+    .sort();
 
   fileNames.forEach((name, idx) => {
     const full = path.join(PROJECT_DIR, name);
@@ -203,7 +194,7 @@ function loadProjects() {
       .map((l) => l.trim())
       .filter(Boolean);
 
-    const proj = { raw, file: name, index: idx + 1 }; // index: ไฟล์ที่ 1,2,...
+    const proj = { raw, file: name, index: idx + 1 };
 
     for (const line of lines) {
       const parts = line.split(/\s*-\s*/);
@@ -232,6 +223,20 @@ function loadProjects() {
     }
 
     if (proj.code) {
+      const allText = [
+        proj.code,
+        proj.name,
+        proj.budget,
+        proj.start_date,
+        proj.end_date,
+        proj.duration,
+        proj.owner,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      proj._normText = normalizeSimple(allText);
+      proj._nameNorm = proj.name ? normalizeSimple(proj.name) : "";
       map[proj.code] = proj;
       arr.push(proj);
     }
@@ -244,26 +249,166 @@ function ensureProjects() {
   const { map, list } = loadProjects();
   PROJECTS_CACHE = map;
   PROJECT_LIST = list;
-  console.log("📁 Loaded projects:", Object.keys(PROJECTS_CACHE));
 }
 
-// ดึง code จากข้อความ (เช่น มี PRJ-001)
+// ---------- ฟีเจอร์พิเศษ: งบมากสุด / งบน้อยสุด / เริ่มเร็วสุด / เริ่มช้าที่สุด ----------
+function tryProjectQuerySpecial(message) {
+  const lower = message.toLowerCase();
+
+  const parseBudget = (x) =>
+    parseInt((x || "0").replace(/[^0-9]/g, ""), 10) || 0;
+
+  const parseDate = (d) => {
+    if (!d) return null;
+    const [day, month, year] = d.split(/[\/\-]/).map(Number);
+    if (!day || !month || !year) return null;
+    return new Date(year, month - 1, day);
+  };
+
+  // งบมากที่สุด
+  if (
+    lower.includes("งบมากที่สุด") ||
+    lower.includes("งบสูงสุด") ||
+    lower.includes("ราคาแพงสุด") ||
+    lower.includes("แพงที่สุด")
+  ) {
+    let best = null;
+    let bestVal = 0;
+
+    for (const p of PROJECT_LIST) {
+      const val = parseBudget(p.budget);
+      if (val > bestVal) {
+        bestVal = val;
+        best = p;
+      }
+    }
+
+    if (!best) return null;
+    return `โครงการที่มีงบประมาณสูงที่สุดคือ:\n\n${formatProjectFull(best)}`;
+  }
+
+  // งบน้อยที่สุด
+  if (
+    lower.includes("งบน้อยที่สุด") ||
+    lower.includes("งบต่ำสุด") ||
+    lower.includes("ถูกที่สุด") ||
+    lower.includes("ราคาถูกสุด")
+  ) {
+    let best = null;
+    let bestVal = Infinity;
+
+    for (const p of PROJECT_LIST) {
+      const val = parseBudget(p.budget);
+      if (val > 0 && val < bestVal) {
+        bestVal = val;
+        best = p;
+      }
+    }
+
+    if (!best || !isFinite(bestVal)) return null;
+    return `โครงการที่มีงบประมาณน้อยที่สุดคือ:\n\n${formatProjectFull(best)}`;
+  }
+
+  // เริ่มเร็วที่สุด
+  if (
+    lower.includes("เริ่มเร็วที่สุด") ||
+    lower.includes("เริ่มก่อน") ||
+    lower.includes("เริ่มไวที่สุด")
+  ) {
+    let best = null;
+    let earliest = null;
+
+    for (const p of PROJECT_LIST) {
+      const dt = parseDate(p.start_date);
+      if (!dt) continue;
+      if (!earliest || dt < earliest) {
+        earliest = dt;
+        best = p;
+      }
+    }
+
+    if (!best) return null;
+    return `โครงการที่เริ่มต้นเร็วที่สุดคือ:\n\n${formatProjectFull(best)}`;
+  }
+
+  // เริ่มช้าที่สุด
+  if (
+    lower.includes("เริ่มช้าที่สุด") ||
+    lower.includes("เริ่มช้าสุด") ||
+    lower.includes("เริ่มหลังสุด") ||
+    lower.includes("เริ่มทีหลัง")
+  ) {
+    let best = null;
+    let latest = null;
+
+    for (const p of PROJECT_LIST) {
+      const dt = parseDate(p.start_date);
+      if (!dt) continue;
+      if (!latest || dt > latest) {
+        latest = dt;
+        best = p;
+      }
+    }
+
+    if (!best) return null;
+    return `โครงการที่เริ่มต้นช้าที่สุดคือ:\n\n${formatProjectFull(best)}`;
+  }
+
+  return null;
+}
+
+// ---------- helper หารหัส / index ----------
 function extractProjectCode(message) {
   const upper = (message || "").toUpperCase();
   const m = upper.match(/PRJ[\s\-]?(\d{3})/);
-  if (!m) return null;
-  return `PRJ-${m[1]}`;
+  return m ? `PRJ-${m[1]}` : null;
 }
 
-// ดึง index จาก "ไฟล์ที่ 1" / "โครงการที่ 3"
 function extractProjectIndex(message) {
   const m = (message || "").match(/(ไฟล์ที่|โครงการที่)\s*(\d{1,3})/);
-  if (!m) return null;
-  const idx = parseInt(m[2], 10);
-  return Number.isNaN(idx) ? null : idx;
+  return m ? parseInt(m[2], 10) : null;
 }
 
-// 👉 ตรงนี้คือรูปแบบคำตอบใหม่แบบที่ต้องการ
+// ---------- หาโปรเจกต์จากข้อความ ----------
+function findProjectByMessage(message) {
+  if (!PROJECTS_CACHE) ensureProjects();
+  const msg = message || "";
+  const msgNorm = normalizeSimple(msg);
+  if (!msgNorm) return null;
+
+  // 1) index เช่น "ไฟล์ที่ 1" / "โครงการที่ 2"
+  const idx = extractProjectIndex(msg);
+  if (idx && PROJECT_LIST[idx - 1]) return PROJECT_LIST[idx - 1];
+
+  // 2) รหัส PRJ-xxx
+  const code = extractProjectCode(msg);
+  if (code && PROJECTS_CACHE[code]) return PROJECTS_CACHE[code];
+
+  // 3) ตรงชื่อโครงการแบบ substring ก่อน
+  for (const proj of PROJECT_LIST) {
+    if (!proj._nameNorm) continue;
+    if (msgNorm.includes(proj._nameNorm) || proj._nameNorm.includes(msgNorm)) {
+      return proj;
+    }
+  }
+
+  // 4) fuzzy เทียบกับข้อความรวมในไฟล์
+  let best = null;
+  let bestScore = 0;
+
+  for (const proj of PROJECT_LIST) {
+    if (!proj._normText) continue;
+    const sc = jaccard(msgNorm, proj._normText);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = proj;
+    }
+  }
+
+  return bestScore >= 0.12 ? best : null;
+}
+
+// ---------- format & field detection ----------
 function formatProjectFull(proj) {
   return [
     `รหัสโครงการ - ${proj.code || "-"}`,
@@ -272,81 +417,120 @@ function formatProjectFull(proj) {
     `วันที่เริ่มต้น - ${proj.start_date || "-"}`,
     `วันที่สิ้นสุด - ${proj.end_date || "-"}`,
     `ระยะเวลา (วัน) - ${proj.duration || "-"}`,
-    `ผู้รับผิดชอบ - ${proj.owner || "-"}`
+    `ผู้รับผิดชอบ - ${proj.owner || "-"}`,
   ].join("\n");
 }
 
+function getRequestedFields(lowerMsg) {
+  const lower = lowerMsg.toLowerCase();
+
+  const wantCode =
+    lower.includes("รหัสโครงการ") ||
+    lower.includes("project code") ||
+    lower.includes("โค้ด");
+
+  const wantName =
+    lower.includes("ชื่อโครงการ") ||
+    (lower.includes("ชื่อ") && lower.includes("โครงการ")) ||
+    lower.includes("project name");
+
+  const wantBudget =
+    lower.includes("มูลค่า") ||
+    lower.includes("งบประมาณ") ||
+    lower.includes("งบ") ||
+    lower.includes("budget") ||
+    lower.includes("ราคา");
+
+  const wantStart =
+    lower.includes("วันที่เริ่มต้น") ||
+    lower.includes("วันเริ่มต้น") ||
+    lower.includes("วันเริ่ม") ||
+    lower.includes("เริ่มเมื่อไหร่") ||
+    lower.includes("เริ่มวันไหน");
+
+  const wantEnd =
+    lower.includes("วันที่สิ้นสุด") ||
+    lower.includes("วันสิ้นสุด") ||
+    lower.includes("วันจบ") ||
+    lower.includes("สิ้นสุดเมื่อไหร่");
+
+  const wantDuration =
+    lower.includes("ระยะเวลา") ||
+    lower.includes("ใช้เวลากี่วัน") ||
+    lower.includes("กี่วัน");
+
+  const wantOwner =
+    lower.includes("ผู้รับผิดชอบ") ||
+    lower.includes("เจ้าของโครงการ") ||
+    lower.includes("คนดูแล") ||
+    lower.includes("ผู้ดูแล");
+
+  const wantAll =
+    lower.includes("มีข้อมูลอะไรบ้าง") ||
+    lower.includes("ข้อมูลอะไรบ้าง") ||
+    lower.includes("รายละเอียดอะไรบ้าง") ||
+    lower.includes("รายละเอียด") ||
+    lower.includes("ข้อมูลทั้งหมด") ||
+    lower.includes("ข้อมูลโครงการ");
+
+  return {
+    wantCode,
+    wantName,
+    wantBudget,
+    wantStart,
+    wantEnd,
+    wantDuration,
+    wantOwner,
+    wantAll,
+  };
+}
+
 function tryProjectAnswer(message) {
+  const msg = message || "";
+  if (!msg.trim()) return null;
   if (!PROJECTS_CACHE) ensureProjects();
 
-  const msg = message || "";
-  const lower = msg.toLowerCase();
+  // 0) คำถามพิเศษ
+  const special = tryProjectQuerySpecial(msg);
+  if (special) return special;
 
-  const idx = extractProjectIndex(msg);        // ไฟล์ที่ 1 / โครงการที่ 1
-  const codeFromText = extractProjectCode(msg); // PRJ-001
-
-  let proj = null;
-  let fromIndex = false;
-
-  if (idx && PROJECT_LIST[idx - 1]) {
-    proj = PROJECT_LIST[idx - 1];
-    fromIndex = true;
-  } else if (codeFromText && PROJECTS_CACHE[codeFromText]) {
-    proj = PROJECTS_CACHE[codeFromText];
-  }
-
+  const proj = findProjectByMessage(msg);
   if (!proj) return null;
 
+  const fields = getRequestedFields(msg.toLowerCase());
   const code = proj.code;
 
-  // ===== คำถามรหัสโครงการจาก "ไฟล์ที่ / โครงการที่" =====
-  if (fromIndex && (lower.includes("รหัสไฟล์") || lower.includes("รหัสโครงการ"))) {
-    return `รหัสโครงการของไฟล์ที่ ${proj.index} คือ ${code}`;
-  }
+  const anySpecific =
+    fields.wantCode ||
+    fields.wantName ||
+    fields.wantBudget ||
+    fields.wantStart ||
+    fields.wantEnd ||
+    fields.wantDuration ||
+    fields.wantOwner;
 
-  // ===== คำถาม "ไฟล์ที่ X มีข้อมูลอะไรบ้าง" =====
-  if (
-    (lower.includes("มีข้อมูลอะไรบ้าง") || lower.includes("รายละเอียดอะไรบ้าง")) &&
-    (lower.includes("ไฟล์ที่") || lower.includes("โครงการที่"))
-  ) {
+  if (fields.wantAll || !anySpecific) {
     return formatProjectFull(proj);
   }
 
-  // ===== คำถามตาม 7 ฟิลด์เดิม =====
-  if (lower.includes("รหัสโครงการ")) {
-    return `รหัสโครงการของโครงการนี้คือ ${code}`;
-  }
-  if (lower.includes("ชื่อโครงการ")) {
-    const n = proj.name || "ไม่ทราบชื่อ";
-    return `ชื่อโครงการ ${code} คือ ${n}`;
-  }
-  if (lower.includes("มูลค่าโครงการ") || lower.includes("มูลค่า")) {
-    const b = proj.budget || "ไม่ทราบ";
-    return `มูลค่าโครงการ ${code} คือ ${b} บาท`;
-  }
-  if (lower.includes("วันที่เริ่มต้น")) {
-    const v = proj.start_date || "ไม่ทราบ";
-    return `วันที่เริ่มต้นของโครงการ ${code} คือ ${v}`;
-  }
-  if (lower.includes("วันที่สิ้นสุด") || lower.includes("วันสิ้นสุด")) {
-    const v = proj.end_date || "ไม่ทราบ";
-    return `วันที่สิ้นสุดของโครงการ ${code} คือ ${v}`;
-  }
-  if (lower.includes("ระยะเวลา")) {
-    const v = proj.duration || "ไม่ทราบ";
-    return `ระยะเวลาโครงการ ${code} คือ ${v}`;
-  }
-  if (lower.includes("ผู้รับผิดชอบ")) {
-    const o = proj.owner || "ไม่ระบุ";
-    return `ผู้รับผิดชอบโครงการ ${code} คือ ${o}`;
-  }
+  if (fields.wantCode) return `รหัสโครงการของโครงการนี้คือ ${code}`;
+  if (fields.wantName) return `ชื่อโครงการ ${code} คือ ${proj.name || "-"}`;
+  if (fields.wantBudget)
+    return `มูลค่าโครงการ ${code} คือ ${proj.budget || "ไม่ทราบ"} บาท`;
+  if (fields.wantStart)
+    return `วันที่เริ่มต้นของโครงการ ${code} คือ ${proj.start_date || "ไม่ทราบ"}`;
+  if (fields.wantEnd)
+    return `วันที่สิ้นสุดของโครงการ ${code} คือ ${proj.end_date || "ไม่ทราบ"}`;
+  if (fields.wantDuration)
+    return `ระยะเวลาโครงการ ${code} คือ ${proj.duration || "ไม่ทราบ"} วัน`;
+  if (fields.wantOwner)
+    return `ผู้รับผิดชอบโครงการ ${code} คือ ${proj.owner || "ไม่ระบุ"}`;
 
-  // ถามกว้าง ๆ เช่น "รายละเอียด PRJ-001"
   return formatProjectFull(proj);
 }
 
 // ======================================================
-//   RAG — ทั่วไป (KB อื่น ๆ)
+//   RAG — ทั่วไป
 // ======================================================
 function chunkText(text, size = 900, overlap = 150) {
   const out = [];
@@ -387,19 +571,17 @@ function score(query, passage) {
 
 function loadKBDocs() {
   if (!fs.existsSync(KB_DIR)) return [];
-
   const allFiles = glob.sync(path.join(KB_DIR, "**/*"), { nodir: true });
-
   const docs = [];
+
   for (const full of allFiles) {
     if (!isTextFile(full)) continue;
-
     const raw = safeRead(full);
     if (!raw) continue;
 
     const fName = path.basename(full);
-
     let text = raw;
+
     if (/\.json$/i.test(full)) {
       try {
         text = JSON.stringify(JSON.parse(raw), null, 2);
@@ -426,12 +608,10 @@ function retrieveTopK(query, k = 4) {
     .map((d) => {
       let sc = score(query, d.text);
       const fn = d.file.toLowerCase();
-
       if (fn.includes("faq")) sc *= 1.3;
       if (fn.includes("company")) sc *= 1.2;
       if (fn.includes("profile")) sc *= 1.1;
       if (fn.includes("prj")) sc *= 1.1;
-
       return { ...d, _score: sc };
     })
     .filter((d) => d._score > 0)
@@ -442,19 +622,13 @@ function retrieveTopK(query, k = 4) {
 function buildContext(query, topK = 4) {
   const hits = retrieveTopK(query, topK);
   if (!hits.length) return "";
-
-  console.log("🔎 RAG hits for query:", query);
-  hits.forEach((h) => {
-    console.log("  ->", h.file, "score", h._score.toFixed(3));
-  });
-
   return hits
     .map((h, i) => `【${i + 1} • ${h.file}】\n${h.text}`)
     .join("\n\n");
 }
 
 // ======================================================
-//   /api/chat (LM only) — คุยทั่วไป + โปรไฟล์
+//   /api/chat
 // ======================================================
 app.post("/api/chat", async (req, res) => {
   const { message, history = [] } = req.body || {};
@@ -462,10 +636,11 @@ app.post("/api/chat", async (req, res) => {
   if (!message || typeof message !== "string")
     return res.status(400).json({ error: "Missing 'message'" });
 
-  // โปรไฟล์
   const pAns = tryProfileAnswer(message);
-  if (pAns)
-    return res.json({ reply: pAns, answered_from: "profile_pond.txt" });
+  if (pAns) return res.json({ reply: pAns, answered_from: "profile" });
+
+  const projAns = tryProjectAnswer(message);
+  if (projAns) return res.json({ reply: projAns, answered_from: "project" });
 
   const msgs = [
     {
@@ -485,7 +660,7 @@ app.post("/api/chat", async (req, res) => {
     );
 
     const reply =
-      resp?.data?.choices?.[0]?.message?.content?.trim() || "(ไม่มีคำตอบ)";
+      resp?.data?.choices?.[0]?.message?.content?.trim() || "ไม่ทราบ";
     res.json({ reply, answered_from: "lm_only" });
   } catch (err) {
     console.error("LM error:", err?.response?.data || err.message);
@@ -494,7 +669,7 @@ app.post("/api/chat", async (req, res) => {
 });
 
 // ======================================================
-//   /api/rag-chat → Profile → Project → FAQ → RAG+LM
+//   /api/rag-chat
 // ======================================================
 app.post("/api/rag-chat", async (req, res) => {
   const { message, history = [], top_k = 4 } = req.body || {};
@@ -502,25 +677,15 @@ app.post("/api/rag-chat", async (req, res) => {
   if (!message)
     return res.status(400).json({ error: "Missing 'message'" });
 
-  // 0) โปรไฟล์
   const pAns = tryProfileAnswer(message);
-  if (pAns) {
-    return res.json({ reply: pAns, answered_from: "profile_pond.txt" });
-  }
+  if (pAns) return res.json({ reply: pAns, answered_from: "profile" });
 
-  // 1) Project deterministic (PRJ-xxx / ไฟล์ที่ / โครงการที่)
   const projAns = tryProjectAnswer(message);
-  if (projAns) {
-    return res.json({ reply: projAns, answered_from: "projects" });
-  }
+  if (projAns) return res.json({ reply: projAns, answered_from: "project" });
 
-  // 2) FAQ
   const faqAns = tryFAQAnswer(message);
-  if (faqAns) {
-    return res.json({ reply: faqAns, answered_from: "faq.txt" });
-  }
+  if (faqAns) return res.json({ reply: faqAns, answered_from: "faq" });
 
-  // 3) RAG ทั่วไป
   const context = buildContext(
     message,
     Math.min(8, Math.max(1, Number(top_k) || 4))
@@ -534,11 +699,12 @@ app.post("/api/rag-chat", async (req, res) => {
     "คุณคือผู้ช่วยที่ตอบสั้น กระชับ และตรงประเด็นเป็นภาษาไทย " +
     "ให้ใช้ข้อมูลจาก CONTEXT เท่านั้น หากไม่มีข้อมูลให้ตอบว่า 'ไม่ทราบ' ห้ามเดา";
 
-  const msgs = [{ role: "system", content: systemPrompt }];
-  msgs.push({ role: "system", content: "CONTEXT:\n" + context });
-
-  history.forEach((m) => msgs.push(m));
-  msgs.push({ role: "user", content: message });
+  const msgs = [
+    { role: "system", content: systemPrompt },
+    { role: "system", content: "CONTEXT:\n" + context },
+    ...history,
+    { role: "user", content: message },
+  ];
 
   try {
     const resp = await axios.post(
@@ -553,7 +719,7 @@ app.post("/api/rag-chat", async (req, res) => {
     );
 
     const reply =
-      resp?.data?.choices?.[0]?.message?.content?.trim() || "(ไม่มีคำตอบ)";
+      resp?.data?.choices?.[0]?.message?.content?.trim() || "ไม่ทราบ";
     res.json({ reply, used_context: true });
   } catch (err) {
     console.error("LM error:", err?.response?.data || err.message);
@@ -561,28 +727,20 @@ app.post("/api/rag-chat", async (req, res) => {
   }
 });
 
-// debug / admin
-app.post("/api/reload-faq", (_req, res) => {
-  loadFAQ();
-  res.json({ ok: true, count: FAQ_CACHE?.length || 0 });
-});
-
+// ======================================================
+// debug reload
+// ======================================================
 app.post("/api/reload-kb", (_req, res) => {
   FAQ_CACHE = null;
   PROJECTS_CACHE = null;
   PROJECT_LIST = [];
   ensureProjects();
-  const exists = fs.existsSync(KB_DIR);
-  const files = exists
-    ? glob.sync(path.join(KB_DIR, "**/*"), { nodir: true })
-    : [];
-  res.json({ ok: true, kb_exists: exists, files });
+  res.json({ ok: true, projects: PROJECT_LIST.length });
 });
 
-// ===== โหลดโปรเจกต์ตอนสตาร์ต =====
+// ===== start =====
 ensureProjects();
 
-// ======================================================
 app.listen(PORT, () => {
   console.log(`✅ Server ready → http://localhost:${PORT}`);
   console.log(`➡️ Model: ${LM_MODEL}`);

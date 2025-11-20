@@ -13,7 +13,6 @@ root.setAttribute('data-theme', saved);
 toggle.checked = saved === 'dark';
 label.textContent = saved === 'dark' ? 'Dark' : 'Light';
 
-// เมื่อสลับสวิตช์
 toggle.addEventListener('change', () => {
   const theme = toggle.checked ? 'dark' : 'light';
   root.setAttribute('data-theme', theme);
@@ -32,7 +31,7 @@ let history = [];
 function appendBubble(text, who = 'me', extraClass = '') {
   const div = document.createElement('div');
   div.className = `chat-msg ${who === 'me' ? 'chat-me' : 'chat-ai'} ${extraClass}`;
-  div.textContent = text;   // ใช้ร่วมกับ white-space: pre-line ใน CSS
+  div.textContent = text;
   chatBox.appendChild(div);
   chatBox.scrollTop = chatBox.scrollHeight;
   return div;
@@ -87,10 +86,6 @@ composer.addEventListener('submit', async (e) => {
   try {
     const lower = t.toLowerCase();
 
-    // 🔍 เลือกใช้ RAG สำหรับ
-    // - มี PRJ-xxx
-    // - มีคำว่า โครงการ / รหัสโครงการ / project
-    // - หรือมี pattern "ไฟล์ที่ 1", "โครงการที่ 3" ฯลฯ
     const useRag = (() => {
       const hasPrjPattern = /prj\s*-?\s*(\d{3})/i.test(lower);
       const hasProjectIndex = /(ไฟล์ที่|โครงการที่)\s*\d{1,3}/.test(lower);
@@ -131,6 +126,5 @@ composer.addEventListener('submit', async (e) => {
   } catch (err) {
     stopWaiting();
     appendBubble('(เกิดข้อผิดพลาด: เชื่อมต่อไม่ได้)', 'ai');
-    console.error(err);
   }
 });

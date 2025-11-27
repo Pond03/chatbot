@@ -2,98 +2,180 @@
 <html lang="th" data-theme="light">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AI Workspace – Dark Mode</title>
-
-  <link rel="icon" type="image/png" href="./chatbot.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Workspace</title>
+  <link rel="stylesheet" href="styles.css">
 
   <script>
-    (function(){
-      var t = localStorage.getItem('theme')
-        || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      document.documentElement.setAttribute('data-theme', t);
+    (function () {
+      var t = localStorage.getItem("theme")
+        || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", t);
     })();
   </script>
-
-  <link rel="stylesheet" href="./styles.css" />
 </head>
-<body>
-  <div class="app">
-    <!-- ===== LEFT SIDEBAR ===== -->
-    <aside class="sidebar">
-      <div class="brand">
-        <img src="./chatbot.png" alt="AI Logo" class="logo" />
-        <div class="brand-text">
-          <div class="brand-title">AI Workspace</div>
-        </div>
-      </div>
 
-      <nav class="menu">
-        <a class="menu-item active"><span class="dot dot-chat"></span> AI Chat</a>
-        <a class="menu-item"><span class="dot"></span> Projects</a>
-        <a class="menu-item"><span class="dot"></span> Templates</a>
-        <a class="menu-item"><span class="dot"></span> Documents</a>
-        <a class="menu-item"><span class="dot"></span> Community</a>
-        <a class="menu-item"><span class="dot"></span> History</a>
+<body>
+
+<div class="layout">
+
+  <!-- ========================================================= -->
+  <!--                     LEFT SIDEBAR                          -->
+  <!-- ========================================================= -->
+
+  <aside class="sidebar">
+
+    <div class="side-header">
+      <img src="chatbot.png" class="side-logo">
+      <div class="side-title">AI Workspace</div>
+    </div>
+
+    <div class="sidebar-scroll-area">
+
+      <nav class="side-menu">
+
+        <div class="side-item active">
+          <span class="side-ico">
+            <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+            </svg>
+          </span>
+          <span>แชทใหม่</span>
+        </div>
+
+        <div class="side-item">
+          <span class="side-ico">
+            <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </span>
+          <span>ค้นหาแชท</span>
+        </div>
+
+        <div class="side-item">
+          <span class="side-ico">
+            <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2">
+              <path d="M3 7h5l2 3h11v9H3z"/>
+            </svg>
+          </span>
+          <span>คลัง</span>
+        </div>
+
       </nav>
 
-      <div class="sidebar-bottom">
-        <div class="theme-switch">
-          <span id="themeLabel">Dark</span>
-          <label class="switch">
-            <input type="checkbox" id="themeToggle" />
-            <span class="slider"></span>
-          </label>
-        </div>
+      <div class="side-section-title">ประวัติการค้นหา</div>
 
-        <div class="user">
-          <span class="status"></span>
-          <div>
-            <div class="user-name">Wanwarin</div>
-            <div class="user-mail">IL0vemyJ0b@gmail.com</div>
-          </div>
-        </div>
+      <div class="history-section-title">วันนี้</div>
+      <div class="history-list" id="todayList"></div>
+
+      <div class="history-section-title">เมื่อวาน</div>
+      <div class="history-list" id="yesterdayList"></div>
+
+      <div class="history-section-title">1 สัปดาห์</div>
+      <div class="history-list" id="weekList"></div>
+
+      <div class="history-section-title">ทั้งหมด</div>
+      <div class="history-list" id="olderList"></div>
+
+    </div>
+
+    <div class="side-bottom">
+
+      <div class="theme-switch">
+        <span id="themeLabel">Light</span>
+        <label class="switch">
+          <input type="checkbox" id="themeToggle">
+          <span class="slider"></span>
+        </label>
       </div>
-    </aside>
 
-    <!-- ===== MAIN ===== -->
-    <main class="main">
-      <header class="topbar">
-        <div class="top-title">AI Chat</div>
-        <button class="btn pill" id="newChatBtn">New</button>
-      </header>
-
-      <section class="card">
-        <h1 class="hero">สวัสดี <span class="accent">Wanwarin</span></h1>
-
-        <div class="chat-frame">
-          <div class="chat-scroll" id="chatBox"></div>
-        </div>
-
-        <form class="composer" id="composer">
-          <input id="prompt" class="composer-input" placeholder="พิมพ์ข้อความของคุณ..." autocomplete="off" />
-          <div class="composer-actions">
-            <button type="button" class="btn ghost pill" disabled>📎 Attach</button>
-            <button type="button" class="btn ghost pill" disabled>🎙️ Voice Message</button>
-            <button type="submit" class="btn primary pill">▶</button>
-          </div>
-        </form>
-      </section>
-    </main>
-
-    <!-- ===== RIGHTBAR ===== -->
-    <aside class="rightbar">
-      <div class="right-title">Projects</div>
-      <div class="project-item active">
-        <span class="green-dot"></span>
+      <div class="user-box">
+        <div class="user-circle"></div>
         <div>
-          <div class="project-name">New Project</div>
-          <div class="project-sub">เริ่มโปรเจกต์ใหม่</div>
+          <div class="user-name">Wanwarin</div>
+          <div class="user-mail">IL0vemyJ0b@gmail.com</div>
         </div>
       </div>
-    </aside>
-  </div>
 
-  <script src="./app.js"></script>
+    </div>
+
+  </aside>
+
+  <!-- ========================================================= -->
+  <!--                        MAIN CONTENT                        -->
+  <!-- ========================================================= -->
+
+  <main class="main-page">
+
+    <div class="topbar">
+      <div class="top-title">AI Chat</div>
+      <button id="newChatBtn" class="btn primary">New</button>
+    </div>
+
+    <div class="chat-container">
+
+      <!-- <<< hero-center ปรับตำแหน่งให้ซ่อน/แสดงได้ -->
+      <h1 class="hero-center">
+        สวัสดี <span class="accent">Wanwarin</span>
+      </h1>
+
+      <div id="chatBox" class="chat-box"></div>
+
+      <form id="composer" class="composer">
+<!-- ช่องพิมพ์ -->
+  <input id="prompt" class="composer-input" placeholder="พิมพ์ข้อความของคุณ..." autocomplete="off">
+
+  <!-- ปุ่ม Attach -->
+  <button type="button" class="btn ghost pill attach-btn" disabled>
+    📎 Attach
+  </button>
+
+  <!-- ปุ่ม Voice -->
+  <button type="button" class="btn ghost pill voice-btn" disabled>
+    🎙️ Voice
+  </button>
+
+
+  <!-- ปุ่มส่ง -->
+  <button type="submit" class="btn primary pill">▶</button>
+</form>
+
+
+    </div>
+
+  </main>
+
+  <!-- ============================
+       RIGHTBAR (PROJECTS)
+=============================== -->
+<aside class="rightbar">
+  <div class="right-title">โครงการ</div>
+
+  <div class="proj-item new-project">
+    <div class="proj-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7h5l2 3h11v9H3z"/>
+      </svg>
+    </div>
+
+    <div class="proj-text">โครงการใหม่</div>
+
+    <button class="proj-add">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
+  </div>
+</aside>
+
+
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
